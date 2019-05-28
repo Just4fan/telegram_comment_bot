@@ -1,8 +1,8 @@
 package repositories
 
 import (
-	"comment_bot/models"
 	"log"
+	"telegram_comment_bot/models"
 	"testing"
 )
 

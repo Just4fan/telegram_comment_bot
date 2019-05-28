@@ -1,8 +1,8 @@
 package utils
 
 import (
-	"comment_bot/models"
 	"strconv"
+	"telegram_comment_bot/models"
 )
 
 func commentText(user string, reply string, content string) string {

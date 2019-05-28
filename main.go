@@ -1,11 +1,11 @@
 package main
 
 import (
-	"comment_bot/configs"
-	"comment_bot/handlers"
 	"fmt"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
+	"telegram_comment_bot/configs"
+	"telegram_comment_bot/handlers"
 )
 
 func main() {

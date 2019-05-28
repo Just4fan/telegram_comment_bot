@@ -1,16 +1,16 @@
 package handlers
 
 import (
-	"comment_bot/configs"
-	"comment_bot/models"
-	"comment_bot/repositories"
-	"comment_bot/utils"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"log"
 	"net/http"
 	"reflect"
 	"strings"
+	"telegram_comment_bot/configs"
+	"telegram_comment_bot/models"
+	"telegram_comment_bot/repositories"
+	"telegram_comment_bot/utils"
 	"time"
 )
 
@@ -465,16 +465,18 @@ func (h *Handler) handleMessage(message *tgbotapi.Message) {
 }
 
 func (h *Handler) handleRegisterRequest(message *tgbotapi.Message) {
-	session, found := h.repo.SelectSession(message.Chat.ID)
-	if !found {
-		session = models.NewSession(message.Chat)
-		session.Status = models.SessionWaitingChannel
-		ok := h.repo.InsertSession(session)
-		if ok {
-			reply := tgbotapi.NewMessage(message.Chat.ID, "开发中，暂不支持注册")
-			h.bot.Send(reply)
-		}
-	}
+	reply := tgbotapi.NewMessage(message.Chat.ID, "开发中，暂不支持注册")
+	h.bot.Send(reply)
+	/*	session, found := h.repo.SelectSession(message.Chat.ID)
+		if !found {
+			session = models.NewSession(message.Chat)
+			session.Status = models.SessionWaitingChannel
+			ok := h.repo.InsertSession(session)
+			if ok {
+				reply := tgbotapi.NewMessage(message.Chat.ID, "开发中，暂不支持注册")
+				h.bot.Send(reply)
+			}
+		}*/
 }
 
 func (h *Handler) handleChannelMessage(message *tgbotapi.Message) {
@@ -494,7 +496,10 @@ func (h *Handler) handleChannelMessage(message *tgbotapi.Message) {
 			}
 			msg, err := h.bot.Send(reply)
 			if err == nil {
-				post := &models.Post{MessageID: message.MessageID, ChatID: message.Chat.ID, AreaID: msg.MessageID}
+				post := &models.Post{MessageID: message.MessageID,
+					ChatID: message.Chat.ID,
+					AreaID: msg.MessageID,
+				}
 				param, err := utils.EncodeParam(post)
 				if err != nil {
 					log.Println(err)

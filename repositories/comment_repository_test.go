@@ -1,10 +1,10 @@
 package repositories
 
 import (
-	"comment_bot/models"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"log"
 	"strconv"
+	"telegram_comment_bot/models"
 	"testing"
 	"time"
 )

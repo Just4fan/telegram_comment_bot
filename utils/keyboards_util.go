@@ -1,13 +1,13 @@
 package utils
 
 import (
-	"comment_bot/models"
 	"errors"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"log"
 	"strconv"
 	"strings"
+	"telegram_comment_bot/models"
 )
 
 func EncodeData(chatID int64, messageID int, panelID int) string {

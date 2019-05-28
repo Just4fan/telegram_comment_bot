@@ -1,6 +1,6 @@
 package repositories
 
-import "comment_bot/models"
+import "telegram_comment_bot/models"
 
 type Repository struct {
 	sessions map[int64]*models.Session

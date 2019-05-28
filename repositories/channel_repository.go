@@ -1,9 +1,9 @@
 package repositories
 
 import (
-	"comment_bot/models"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"telegram_comment_bot/models"
 )
 
 const (
