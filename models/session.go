@@ -7,15 +7,15 @@ import (
 )
 
 const (
-	SessionAlive                   = 0x0
-	SESSION_EXPIRED                = 0x1
-	SESSION_ABORTED                = 0x2
-	SESSION_ERROR                  = 0x3
-	SessionFinished                = 0x4
-	SessionWaitingChannel          = 0x5
-	SessionWaitingPost             = 0x6
-	SESSION_WAITING_SELECT_COMMENT = 0x7
-	SessionWaitingInputComment     = 0x8
+	SessionAlive               = 0x0
+	SESSION_EXPIRED            = 0x1
+	SESSION_ABORTED            = 0x2
+	SESSION_ERROR              = 0x3
+	SessionFinished            = 0x4
+	SessionWaitingChannel      = 0x5
+	SessionWaitingPost         = 0x6
+	SessionWaitingEnablePost   = 0x7
+	SessionWaitingInputComment = 0x8
 )
 
 var TypeCommentSession = reflect.TypeOf(&CommentSession{})

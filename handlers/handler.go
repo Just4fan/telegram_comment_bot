@@ -19,6 +19,7 @@ const (
 	CommandStart    = "start"
 	CommandReload   = "reload"
 	CommandCancel   = "cancel"
+	CommandEnable   = "enable"
 )
 
 type Handler struct {
@@ -27,6 +28,23 @@ type Handler struct {
 	channelRepo *repositories.ChannelRepository
 	sessionRepo *repositories.SessionRepository
 	commentRepo *repositories.CommentRepository
+}
+
+func (h *Handler) Pause() {
+	updates := h.bot.ListenForWebhook("/" + h.bot.Token)
+	go http.ListenAndServe("0.0.0.0:80", nil)
+
+	for update := range updates {
+		if update.Message != nil || update.CallbackQuery != nil {
+			var chatID int64
+			if update.Message != nil {
+				chatID = update.Message.Chat.ID
+			} else {
+				chatID = int64(update.CallbackQuery.From.ID)
+			}
+			h.bot.Send(tgbotapi.NewMessage(chatID, "机器人维护中"))
+		}
+	}
 }
 
 func (h *Handler) Start(offset int) {
@@ -42,7 +60,7 @@ func (h *Handler) Start(offset int) {
 				}
 				for update := range updates {*/
 
-		log.Printf("%+v\n", update)
+		//log.Printf("%+v\n", update.Message.ForwardFrom)
 		if update.ChannelPost != nil {
 			h.handleChannelMessage(update.ChannelPost)
 		} else if update.EditedChannelPost != nil {
@@ -64,6 +82,8 @@ func (h *Handler) Start(offset int) {
 					h.handleReloadRequest(update.Message)
 				case CommandCancel:
 					h.handleCancelRequest(update.Message)
+				case CommandEnable:
+					h.handleEnableRequest(update.Message)
 				}
 				handled = true
 			}
@@ -76,12 +96,31 @@ func (h *Handler) Start(offset int) {
 	}
 }
 
+func (h *Handler) handleEnableRequest(message *tgbotapi.Message) {
+	h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, "转发开启评论的频道消息到此对话"))
+	h.sessionRepo.InsertSession(message.Chat.ID, &models.BaseSession{ChatID: message.Chat.ID, Status: models.SessionWaitingEnablePost})
+}
+
 func (h *Handler) handleCancelRequest(message *tgbotapi.Message) {
+
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println(err)
+		}
+	}()
+
 	h.sessionRepo.RemoveSession(message.Chat.ID)
 	h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, "会话状态已清空"))
 }
 
 func (h *Handler) handleReloadRequest(message *tgbotapi.Message) {
+
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println(err)
+		}
+	}()
+
 	msg := tgbotapi.MessageConfig{
 		BaseChat: tgbotapi.BaseChat{
 			ChatID: message.Chat.ID,
@@ -98,6 +137,13 @@ func (h *Handler) handleReloadRequest(message *tgbotapi.Message) {
 }
 
 func (h *Handler) handleStartRequest(message *tgbotapi.Message) {
+
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println(err)
+		}
+	}()
+
 	log.Println(message.CommandArguments())
 	if len(message.CommandArguments()) != 0 {
 		h.handleCommentRequest(message)
@@ -105,6 +151,13 @@ func (h *Handler) handleStartRequest(message *tgbotapi.Message) {
 }
 
 func (h *Handler) handleCommentRequest(message *tgbotapi.Message) {
+
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println(err)
+		}
+	}()
+
 	target, err := utils.DecodeParam(message.CommandArguments())
 	if err != nil {
 		log.Println(err)
@@ -168,6 +221,13 @@ func (h *Handler) handleCommentRequest(message *tgbotapi.Message) {
 }
 
 func (h *Handler) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
+
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println(err)
+		}
+	}()
+
 	arr := strings.Split(query.Data, " ")
 	log.Println(arr)
 	/*	if query.Post == nil {
@@ -289,6 +349,13 @@ func (h *Handler) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 }
 
 func (h *Handler) handleMessage(message *tgbotapi.Message) {
+
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println(err)
+		}
+	}()
+
 	v, found := h.sessionRepo.SelectSessionByChatID(message.Chat.ID)
 	if found {
 		typ := reflect.TypeOf(v)
@@ -465,6 +532,13 @@ func (h *Handler) handleMessage(message *tgbotapi.Message) {
 }
 
 func (h *Handler) handleRegisterRequest(message *tgbotapi.Message) {
+
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println(err)
+		}
+	}()
+
 	reply := tgbotapi.NewMessage(message.Chat.ID, "开发中，暂不支持注册")
 	h.bot.Send(reply)
 	/*	session, found := h.repo.SelectSession(message.Chat.ID)
@@ -480,6 +554,12 @@ func (h *Handler) handleRegisterRequest(message *tgbotapi.Message) {
 }
 
 func (h *Handler) handleChannelMessage(message *tgbotapi.Message) {
+
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println(err)
+		}
+	}()
 
 	channel, found := h.channelRepo.FindChannelForCreatorByChatID(message.Chat.ID)
 	if found {
@@ -512,6 +592,8 @@ func (h *Handler) handleChannelMessage(message *tgbotapi.Message) {
 				_, err = h.bot.Send(tgbotapi.NewEditMessageReplyMarkup(msg.Chat.ID, msg.MessageID, keyboard))
 				h.commentRepo.InsertPost(post)
 			}
+		} else {
+
 		}
 	}
 }
