@@ -1,2 +1,12 @@
 {
+  "channel_unrecorded": "",
+  "session_status_cleaned": "",
+  "input_comment_or_cancel": "",
+  "permission_denied": "",
+  "comment_message_disabled": "",
+  "load_detail": "",
+  "comment_reload_success": "",
+  "forward_reload_comment_channel_message": "",
+  "no_more_comment_data": "",
+  "forward_enable_comment_channel_message": ""
 }

@@ -7,22 +7,22 @@ type SessionRepository struct {
 	database *Database
 }
 
-func (r *SessionRepository) SelectCommentSessionByChatID(chatID int64) (session *models.CommentSession, found bool) {
+func (r *SessionRepository) SelectCommentSessionByChatID(chatID int64) (session *models.AddCommentSession, found bool) {
 	v := r.sessions[chatID]
 	if v != nil {
-		session, found = v.(*models.CommentSession)
+		session, found = v.(*models.AddCommentSession)
 		return
 	}
 	return nil, false
 }
 
-func (r *SessionRepository) InsertCommentSession(session *models.CommentSession) (ok bool) {
+func (r *SessionRepository) InsertCommentSession(session *models.AddCommentSession) (ok bool) {
 	r.sessions[session.ChatID] = session
 	ok = true
 	return
 }
 
-func (r *SessionRepository) UpdateCommentSession(session *models.CommentSession) (ok bool) {
+func (r *SessionRepository) UpdateCommentSession(session *models.AddCommentSession) (ok bool) {
 	r.sessions[session.ChatID] = session
 	ok = true
 	return

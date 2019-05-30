@@ -18,7 +18,7 @@ func commentText(user string, reply string, content string) string {
 
 func CommentsText(comments []*models.Comment) (text string) {
 	if len(comments) == 0 {
-		return "暂时还没有评论"
+		return "暂无评论"
 	}
 	for i, comment := range comments {
 		text += strconv.Itoa(i+1) + ". " + commentText(comment.UserName, comment.ReplyTo, comment.Content) + "\n"

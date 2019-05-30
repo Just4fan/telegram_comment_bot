@@ -20,6 +20,12 @@ const (
 	CommandReload   = "reload"
 	CommandCancel   = "cancel"
 	CommandEnable   = "enable"
+
+	EnableCommentSection  = int8(0x0)
+	ReloadCommentSection  = int8(0x1)
+	RecoverCommentSection = int8(0x2)
+
+	PageSize = 5
 )
 
 type Handler struct {
@@ -32,7 +38,7 @@ type Handler struct {
 
 func (h *Handler) Pause() {
 	updates := h.bot.ListenForWebhook("/" + h.bot.Token)
-	go http.ListenAndServe("0.0.0.0:80", nil)
+	go http.ListenAndServe("0.0.0.0:8080", nil)
 
 	for update := range updates {
 		if update.Message != nil || update.CallbackQuery != nil {
@@ -42,14 +48,20 @@ func (h *Handler) Pause() {
 			} else {
 				chatID = int64(update.CallbackQuery.From.ID)
 			}
-			h.bot.Send(tgbotapi.NewMessage(chatID, "机器人维护中"))
+			h.bot.Send(tgbotapi.NewMessage(chatID, "机器人正在搬家"))
 		}
 	}
 }
 
-func (h *Handler) Start(offset int) {
+func (h *Handler) Start() {
 	updates := h.bot.ListenForWebhook("/" + h.bot.Token)
-	go http.ListenAndServe("0.0.0.0:80", nil)
+	go http.ListenAndServe("0.0.0.0:8080", nil)
+
+	info, err := h.bot.GetWebhookInfo()
+
+	if err != nil {
+		log.Printf("%+v\n", info)
+	}
 
 	for update := range updates {
 		/*		config := tgbotapi.NewUpdate(offset)
@@ -96,9 +108,136 @@ func (h *Handler) Start(offset int) {
 	}
 }
 
+func (h *Handler) updateCommentPanel(postChat int64, postMessage int, page int, chatID int64, panelID int, updateOnEmpty bool) bool {
+
+	comments := h.commentRepo.FindCommentsByMessage(postChat, postMessage, page, PageSize)
+
+	if !updateOnEmpty && len(comments) == 0 {
+		return false
+	}
+
+	keyboard := utils.NewInlineKeyboardMarkup(
+		utils.CommentPostKeyBoardRow(postChat, postMessage),
+		utils.CommentIndexKeyBoardRow(comments),
+		utils.PageSwitchKeyboardRow(page, postChat, postMessage, panelID))
+
+	editConfig := tgbotapi.EditMessageTextConfig{
+		BaseEdit: tgbotapi.BaseEdit{
+			ChatID:      chatID,
+			MessageID:   panelID,
+			ReplyMarkup: &keyboard,
+		},
+		Text:      utils.CommentsText(comments),
+		ParseMode: tgbotapi.ModeHTML,
+	}
+
+	_, err := h.bot.Send(editConfig)
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+
+	return true
+
+}
+
+func (h *Handler) updateCommentSection(section *models.CommentSection) bool {
+
+	comments := h.commentRepo.FindCommentsByMessage(section.ChatID, section.MessageID, 1, PageSize)
+	commentsText := utils.CommentsText(comments)
+	params, err := utils.EncodeParam(section.ChatID, section.MessageID)
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+
+	url := "http://t.me/" + h.bot.Self.UserName + "?start=" + params
+
+	keyboard := utils.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.InlineKeyboardButton{Text: "查看详情️", URL: &url}))
+
+	edit := tgbotapi.EditMessageTextConfig{
+		BaseEdit: tgbotapi.BaseEdit{
+			ChatID:      section.ChatID,
+			MessageID:   section.SectionID,
+			ReplyMarkup: &keyboard,
+		},
+		Text:      commentsText,
+		ParseMode: tgbotapi.ModeHTML,
+	}
+
+	log.Printf("%+v\n", edit)
+	_, err = h.bot.Send(edit)
+
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+
+	return true
+
+}
+
+func (h *Handler) resolveCommentSection(chatID int64, messageID int, mode int8) bool {
+
+	//var comments []*models.Comment
+	section, found := h.commentRepo.FindCommentSectionByMessage(chatID, messageID)
+
+	if (!found && mode == EnableCommentSection) || (found && mode == RecoverCommentSection) {
+		if !found {
+			section = &models.CommentSection{
+				ChatID:    chatID,
+				MessageID: messageID,
+			}
+		}
+
+		replyConfig := &tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:              chatID,
+				ReplyToMessageID:    messageID,
+				DisableNotification: true,
+			},
+			Text: "加载中",
+		}
+
+		msg, err := h.bot.Send(replyConfig)
+		if err != nil {
+			log.Println(err)
+			return false
+		}
+
+		section.SectionID = msg.MessageID
+
+		if !found {
+
+			ok := h.commentRepo.InsertCommentSection(section)
+
+			if !ok {
+				return false
+			}
+
+		} else {
+
+			ok := h.commentRepo.UpdateCommentSection(section)
+
+			if !ok {
+				return false
+			}
+
+		}
+
+	} else if (!found && mode == ReloadCommentSection) || (!found && mode == RecoverCommentSection) || (found && mode == EnableCommentSection) {
+		return false
+	}
+
+	return h.updateCommentSection(section)
+
+}
+
 func (h *Handler) handleEnableRequest(message *tgbotapi.Message) {
 	h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, "转发开启评论的频道消息到此对话"))
-	h.sessionRepo.InsertSession(message.Chat.ID, &models.BaseSession{ChatID: message.Chat.ID, Status: models.SessionWaitingEnablePost})
+	h.sessionRepo.InsertSession(message.Chat.ID, &models.BaseSession{ChatID: message.Chat.ID, Status: models.SessionWaitingPost})
 }
 
 func (h *Handler) handleCancelRequest(message *tgbotapi.Message) {
@@ -129,7 +268,7 @@ func (h *Handler) handleReloadRequest(message *tgbotapi.Message) {
 				转发评论功能异常的频道消息到此或者输入指令 /cancel 取消操作`,
 	}
 	h.bot.Send(msg)
-	session := &models.ReloadSession{BaseSession: models.BaseSession{
+	session := &models.ReloadCommentSession{BaseSession: models.BaseSession{
 		ChatID: message.Chat.ID,
 		Status: models.SessionWaitingPost,
 	}}
@@ -150,6 +289,7 @@ func (h *Handler) handleStartRequest(message *tgbotapi.Message) {
 	}
 }
 
+//Extract Edit Reply Method
 func (h *Handler) handleCommentRequest(message *tgbotapi.Message) {
 
 	defer func() {
@@ -158,66 +298,42 @@ func (h *Handler) handleCommentRequest(message *tgbotapi.Message) {
 		}
 	}()
 
-	target, err := utils.DecodeParam(message.CommandArguments())
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	_, found := h.channelRepo.FindChannelForCreatorByChatID(target.ChatID)
-	if !found {
-		h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, "频道未注册！"))
-	}
-	comments := h.commentRepo.FindCommentsByMessage(target.ChatID, target.MessageID, 1, 5)
-	//var msg tgbotapi.Message
-	forward := tgbotapi.NewForward(message.Chat.ID, target.ChatID, target.MessageID)
-	forwardMsg, err := h.bot.Send(forward)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	log.Printf("channel:%+v\n", *forwardMsg.ForwardFromChat)
-	reply := &tgbotapi.MessageConfig{
-		BaseChat: tgbotapi.BaseChat{
-			ChatID:              message.Chat.ID,
-			ReplyToMessageID:    forwardMsg.MessageID,
-			DisableNotification: false,
-		},
-		Text:      utils.CommentsText(comments),
-		ParseMode: tgbotapi.ModeHTML,
-	}
-	msg, err := h.bot.Send(reply)
+	chatID, messageID, err := utils.DecodeParam(message.CommandArguments())
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
-	keyboard := utils.NewInlineKeyboardMarkup(
-		utils.CommentPostKeyBoardRow(target.ChatID, target.MessageID, msg.MessageID),
-		utils.CommentIndexKeyBoardRow(comments, msg.MessageID),
-		utils.PageSwitchKeyboardRow(1, target.ChatID, target.MessageID, msg.MessageID))
-	edit := tgbotapi.NewEditMessageReplyMarkup(msg.Chat.ID, msg.MessageID, keyboard)
-	_, err = h.bot.Send(edit)
+	_, found := h.channelRepo.FindChannelForCreatorByChatID(chatID)
+	if !found {
+		h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, "频道未注册！"))
+	}
+
+	//var msg tgbotapi.Message
+	forwardConfig := tgbotapi.NewForward(message.Chat.ID, chatID, messageID)
+	forwardMsg, err := h.bot.Send(forwardConfig)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	/*	session := &models.CommentSession{
-			BaseSession: models.BaseSession{
-				ChatID: message.Chat.ID,
-				Status: models.SESSION_WAITING_ADD_COMMENT,
-			},
-			Post: &models.Post{
-				ChatID: target.ChatID,
-				MessageID: target.MessageID,
-			},
-			Comments: comments,
-			Area: msgID,
-			Panel: msg.MessageID,
-			Page: 1,
-			Total: total,
-			Params: message.CommandArguments(),
-		}
-		h.sessionRepo.InsertCommentSession(session)*/
+
+	log.Printf("channel:%+v\n", *forwardMsg.ForwardFromChat)
+	msgConfig := &tgbotapi.MessageConfig{
+		BaseChat: tgbotapi.BaseChat{
+			ChatID:           message.Chat.ID,
+			ReplyToMessageID: forwardMsg.MessageID,
+		},
+		Text: "加载中",
+	}
+
+	msg, err := h.bot.Send(msgConfig)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	h.updateCommentPanel(chatID, messageID, 1, message.Chat.ID, msg.MessageID, true)
+
 }
 
 func (h *Handler) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
@@ -241,7 +357,11 @@ func (h *Handler) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 
 	case "cp", "cr":
 
-		session := &models.CommentSession{
+		var chatID int64
+		var messageID int
+		var comment *models.Comment
+
+		session := &models.AddCommentSession{
 			BaseSession: models.BaseSession{
 				ChatID: int64(query.From.ID),
 				Status: models.SessionWaitingInputComment,
@@ -249,44 +369,50 @@ func (h *Handler) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 		}
 
 		if arr[0] == "cp" {
+
 			var err error
-			chatID, messageID, panelID, err := utils.DecodeData(arr[1])
+			chatID, messageID, err = utils.DecodeData(arr[1])
 			if err != nil {
 				log.Println(err)
 				return
 			}
-			post, found := h.commentRepo.FindPostByMessage(chatID, messageID)
-			if !found {
-				log.Println("Post Not Found")
-				return
+
+			session.Post = &models.Post{
+				ChatID:    chatID,
+				MessageID: messageID,
 			}
-			session.Post = post
-			session.Panel = panelID
+
 		} else {
-			id, panelID, err := utils.DecodeDataR(arr[1])
+
+			var id primitive.ObjectID
+			var err error
+			id, err = utils.DecodeDataR(arr[1])
 			if err != nil {
 				log.Println(err)
 				return
 			}
-			comment, found := h.commentRepo.FindCommentByID(id)
+
+			session.ReplyTo = id
+
+			var found bool
+			comment, found = h.commentRepo.FindCommentByID(id)
 			if !found {
-				log.Println("Comment Not Found")
+				h.bot.Send(tgbotapi.NewMessage(int64(query.From.ID), "找不到该回复"))
 				return
 			}
-			session.Comment = comment
-			session.Panel = panelID
+
 		}
 
 		h.sessionRepo.InsertSession(session.ChatID, session)
 		text := ""
 
-		if session.Comment != nil {
-			text += "评论用户 <b>" + session.Comment.UserName + "</b>:\n<pre>\n</pre>" + "<pre>      </pre><i>" + session.Comment.Content + "</i>\n<pre>\n</pre>"
+		if comment != nil {
+			text += "评论用户 <b>" + comment.UserName + "</b>:\n<pre>\n</pre>" + "<pre>      </pre><i>" + comment.Content + "</i>\n<pre>\n</pre>"
 		}
 
 		text += "输入评论并发送，发送 /cancel 指令退出评论:"
 
-		msg := tgbotapi.MessageConfig{
+		config := tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
 				ChatID: session.ChatID,
 			},
@@ -294,7 +420,7 @@ func (h *Handler) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 			ParseMode: tgbotapi.ModeHTML,
 		}
 
-		_, err := h.bot.Send(msg)
+		_, err := h.bot.Send(config)
 
 		if err != nil {
 			log.Println(err)
@@ -313,32 +439,11 @@ func (h *Handler) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 
 		if page > 0 {
 
-			comments := h.commentRepo.FindCommentsByMessage(chatID, messageID, page, 5)
-			if len(comments) > 0 {
+			//comments := h.commentRepo.FindCommentsByMessage(chatID, messageID, page, 5)
 
-				text := utils.CommentsText(comments)
-
-				markup := utils.NewInlineKeyboardMarkup(
-					utils.CommentPostKeyBoardRow(chatID, messageID, panelID),
-					utils.CommentIndexKeyBoardRow(comments, panelID),
-					utils.PageSwitchKeyboardRow(page, chatID, messageID, panelID))
-
-				edit := tgbotapi.EditMessageTextConfig{
-					BaseEdit: tgbotapi.BaseEdit{
-						ChatID:      int64(query.From.ID),
-						MessageID:   panelID,
-						ReplyMarkup: &markup,
-					},
-					Text:      text,
-					ParseMode: tgbotapi.ModeHTML,
-				}
-
-				log.Printf("%+v\n", edit)
-
-				h.bot.Send(edit)
+			if h.updateCommentPanel(chatID, messageID, page, int64(query.From.ID), panelID, false) {
 
 				h.bot.AnswerCallbackQuery(tgbotapi.NewCallback(query.ID, ""))
-
 				return
 
 			}
@@ -362,9 +467,17 @@ func (h *Handler) handleMessage(message *tgbotapi.Message) {
 		log.Println(typ)
 		switch typ {
 
+		case models.TypeEnableSession:
+
+			session, _ := v.(*models.EnableCommentSession)
+			switch session.Status {
+			case models.SessionWaitingPost:
+
+			}
+
 		case models.TypeReloadSession:
 
-			session, _ := v.(*models.ReloadSession)
+			session, _ := v.(*models.ReloadCommentSession)
 			switch session.Status {
 			case models.SessionWaitingPost:
 				if message.ForwardFromChat == nil {
@@ -380,35 +493,11 @@ func (h *Handler) handleMessage(message *tgbotapi.Message) {
 					h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, "没有权限"))
 					return
 				}
-				post, found := h.commentRepo.FindPostByMessage(message.ForwardFromChat.ID, message.ForwardFromMessageID)
-				if !found {
-					h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, "该频道消息没有开启评论功能"))
-					return
-				}
-				comments := h.commentRepo.FindCommentsByMessage(post.ChatID, post.MessageID, 1, 5)
-				commentsText := utils.CommentsText(comments)
-				params, err := utils.EncodeParam(post)
-				if err != nil {
-					log.Println(err)
-					return
-				}
-				url := "http://t.me/comment_it_bot?start=" + params
-				keyboard := utils.NewInlineKeyboardMarkup(
-					tgbotapi.NewInlineKeyboardRow(
-						tgbotapi.InlineKeyboardButton{Text: "查看详情️", URL: &url}))
-				edit := tgbotapi.EditMessageTextConfig{
-					BaseEdit: tgbotapi.BaseEdit{
-						ChatID:      post.ChatID,
-						MessageID:   post.AreaID,
-						ReplyMarkup: &keyboard,
-					},
-					Text:      commentsText,
-					ParseMode: tgbotapi.ModeHTML,
-				}
-				log.Printf("%+v\n", edit)
-				_, err = h.bot.Send(edit)
-				if err != nil {
-					log.Println(err)
+
+				ok := h.resolveCommentSection(message.ForwardFromChat.ID, message.ForwardFromMessageID, ReloadCommentSection)
+
+				if ok {
+
 					h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, "评论功能已重新加载"))
 					h.sessionRepo.RemoveSession(message.Chat.ID)
 				}
@@ -416,70 +505,72 @@ func (h *Handler) handleMessage(message *tgbotapi.Message) {
 
 		case models.TypeCommentSession:
 
-			session, _ := v.(*models.CommentSession)
+			session, _ := v.(*models.AddCommentSession)
 			log.Printf("%+v\n", session)
 			switch session.Status {
 			case models.SessionWaitingInputComment:
-				reply := &models.Comment{
+
+				//var replyTo bool
+				var replyTo *models.Comment
+
+				comment := &models.Comment{
 					ID:       primitive.NewObjectID(),
-					Post:     session.Post,
-					UserID:   message.From.ID,
-					UserName: message.From.FirstName + " " + message.From.LastName,
 					Date:     time.Now().Unix(),
 					Content:  message.Text,
+					UserID:   message.From.ID,
+					UserName: message.From.FirstName + " " + message.From.LastName,
 				}
-				if session.Comment != nil {
-					log.Printf("%+v\n", session.Comment)
-					//content := utils.CommentText(message.From.UserName, comment.UserName, message.Text)
-					reply.Post = session.Comment.Post
-					reply.ReplyTo = session.Comment.UserName
-					reply.Reply = session.Comment.ID
-					reply.ReplyID = session.Comment.UserID
+
+				if session.ReplyTo.Hex() != "000000000000000000000000" {
+					//replyTo = true
+					var found bool
+					replyTo, found = h.commentRepo.FindCommentByID(session.ReplyTo)
+					if !found {
+						log.Println("ReplyTo Not Found")
+						return
+					}
+					comment.Post = replyTo.Post
+					comment.Reply = replyTo.ID
+					comment.ReplyTo = replyTo.UserName
+					comment.ReplyID = replyTo.UserID
+				} else {
+					comment.Post = session.Post
 				}
-				log.Printf("%+v", reply)
-				ok := h.commentRepo.InsertComment(reply)
+
+				section, found := h.commentRepo.FindCommentSectionByMessage(comment.Post.ChatID, comment.Post.MessageID)
+				if !found {
+					log.Println("Post Not Found")
+					return
+				}
+
+				log.Printf("%+v", comment)
+				ok := h.commentRepo.InsertComment(comment)
 				if !ok {
 					return
 				}
-				comments := h.commentRepo.FindCommentsByMessage(reply.Post.ChatID, reply.Post.MessageID, 1, 5)
-				commentsText := utils.CommentsText(comments)
-				params, err := utils.EncodeParam(reply.Post)
-				if err != nil {
-					log.Println(err)
-					return
-				}
-				url := "http://t.me/comment_it_bot?start=" + params
-				keyboard := utils.NewInlineKeyboardMarkup(
-					tgbotapi.NewInlineKeyboardRow(
-						tgbotapi.InlineKeyboardButton{Text: "查看详情️", URL: &url}))
-				edit := tgbotapi.EditMessageTextConfig{
-					BaseEdit: tgbotapi.BaseEdit{
-						ChatID:      reply.Post.ChatID,
-						MessageID:   reply.Post.AreaID,
-						ReplyMarkup: &keyboard,
-					},
-					Text:      commentsText,
-					ParseMode: tgbotapi.ModeHTML,
-				}
-				log.Printf("%+v\n", edit)
-				h.bot.Send(edit)
-				h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, "评论成功"))
-				if session.Comment != nil {
-					markup := utils.NewInlineKeyboardMarkup(utils.QuickReplyKeyBoardRow(reply, 0))
+
+				h.updateCommentSection(section)
+
+				if replyTo != nil && comment.ReplyID != comment.UserID {
+
+					markup := utils.NewInlineKeyboardMarkup(utils.QuickReplyKeyBoardRow(comment))
 					notification := tgbotapi.MessageConfig{
 						BaseChat: tgbotapi.BaseChat{
-							ChatID:      int64(reply.ReplyID),
+							ChatID:      int64(comment.ReplyID),
 							ReplyMarkup: markup,
 						},
-						Text:      utils.NotificationText(reply.UserName, session.Comment.Content, reply.Content),
+						Text:      utils.NotificationText(comment.UserName, replyTo.Content, comment.Content),
 						ParseMode: tgbotapi.ModeHTML,
 					}
 					_, err := h.bot.Send(notification)
 					if err != nil {
 						log.Println(err)
 						h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, "评论成功，但是对方可能关闭了跟我的对话，通知无法送达"))
+						return
 					}
+
 				}
+				h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, "评论成功"))
 				session.Status = models.SessionFinished
 			}
 		}
@@ -564,8 +655,10 @@ func (h *Handler) handleChannelMessage(message *tgbotapi.Message) {
 	channel, found := h.channelRepo.FindChannelForCreatorByChatID(message.Chat.ID)
 	if found {
 		if channel.Settings.Mode == models.ModeAuto {
+
+			h.resolveCommentSection(message.Chat.ID, message.MessageID, EnableCommentSection)
 			//data := string(message.MessageID)
-			reply := &tgbotapi.MessageConfig{
+			/*reply := &tgbotapi.MessageConfig{
 				BaseChat: tgbotapi.BaseChat{
 					ChatID:              channel.ChatID,
 					ReplyToMessageID:    message.MessageID,
@@ -577,23 +670,21 @@ func (h *Handler) handleChannelMessage(message *tgbotapi.Message) {
 			msg, err := h.bot.Send(reply)
 			if err == nil {
 				post := &models.Post{MessageID: message.MessageID,
-					ChatID: message.Chat.ID,
-					AreaID: msg.MessageID,
+					ChatID:    message.Chat.ID,
+					SectionID: msg.MessageID,
 				}
 				param, err := utils.EncodeParam(post)
 				if err != nil {
 					log.Println(err)
 					return
 				}
-				url := "http://t.me/comment_it_bot?start=" + param
+				url := "http://t.me/" + h.bot.Self.UserName + "?start=" + param
 				keyboard := utils.NewInlineKeyboardMarkup(
 					tgbotapi.NewInlineKeyboardRow(
 						tgbotapi.InlineKeyboardButton{Text: "查看详情️", URL: &url}))
 				_, err = h.bot.Send(tgbotapi.NewEditMessageReplyMarkup(msg.Chat.ID, msg.MessageID, keyboard))
-				h.commentRepo.InsertPost(post)
-			}
-		} else {
-
+				h.commentRepo.InsertCommentSection(post)
+			}*/
 		}
 	}
 }
@@ -604,7 +695,7 @@ func NewHandler(config configs.BotConfig) *Handler {
 		panic(err)
 	}
 	bot.Debug = true
-	ret, err := bot.SetWebhook(tgbotapi.NewWebhook(config.Server + bot.Token))
+	ret, err := bot.SetWebhook(tgbotapi.NewWebhook(config.Server + "/" + bot.Token))
 	if err != nil {
 		panic(err)
 	}

@@ -5,7 +5,7 @@ import "go.mongodb.org/mongo-driver/bson/primitive"
 type Post struct {
 	MessageID int   `json:"message_id" bson:"message_id"`
 	ChatID    int64 `json:"chat_id" bson:"chat_id"`
-	AreaID    int   `json:"area_id" bson:"area_id"`
+	//SectionID int   `json:"area_id" bson:"area_id"`
 }
 
 type Comment struct {

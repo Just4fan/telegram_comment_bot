@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	collectionComments = "comments"
-	collectionPosts    = "posts"
+	collectionComments        = "comments"
+	collectionCommentSections = "comment_sections"
 )
 
 type CommentRepository struct {
@@ -62,10 +62,10 @@ func (r *CommentRepository) InsertComment(comment *models.Comment) (ok bool) {
 	return
 }
 
-func (r *CommentRepository) FindPostByMessage(chatID int64, messageID int) (post *models.Post, found bool) {
-	post = &models.Post{}
+func (r *CommentRepository) FindCommentSectionByMessage(chatID int64, messageID int) (post *models.CommentSection, found bool) {
+	post = &models.CommentSection{}
 	query := bson.M{"chat_id": chatID, "message_id": messageID}
-	err := r.database.FindOne(collectionPosts, query, &options.FindOneOptions{}, post)
+	err := r.database.FindOne(collectionCommentSections, query, &options.FindOneOptions{}, post)
 	if err != nil {
 		log.Println(err)
 	} else {
@@ -74,8 +74,18 @@ func (r *CommentRepository) FindPostByMessage(chatID int64, messageID int) (post
 	return
 }
 
-func (r *CommentRepository) InsertPost(post *models.Post) (ok bool) {
-	_, err := r.database.InsertOne(collectionPosts, post)
+func (r *CommentRepository) UpdateCommentSection(section *models.CommentSection) (ok bool) {
+	query := bson.M{"chat_id": section.ChatID, "message_id": section.MessageID}
+	update := bson.M{"section_id": section.SectionID}
+	_, err := r.database.UpdateOne(collectionCommentSections, query, update, &options.UpdateOptions{})
+	if err == nil {
+		ok = true
+	}
+	return
+}
+
+func (r *CommentRepository) InsertCommentSection(section *models.CommentSection) (ok bool) {
+	_, err := r.database.InsertOne(collectionCommentSections, section)
 	if err == nil {
 		ok = true
 	}

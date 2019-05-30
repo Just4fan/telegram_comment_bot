@@ -21,8 +21,8 @@ func main() {
 		panic(err)
 	}
 	handler := handlers.NewHandler(c)
-	handler.Pause()
+	//handler.Pause()
 
 	//handler.Stop()
-	//handler.Start(0)
+	handler.Start()
 }

@@ -10,12 +10,12 @@ import (
 	"telegram_comment_bot/models"
 )
 
-func EncodeData(chatID int64, messageID int, panelID int) string {
-	return strconv.FormatInt(chatID, 10) + "/" + strconv.Itoa(messageID) + "/" + strconv.Itoa(panelID)
+func EncodeData(chatID int64, messageID int) string {
+	return strconv.FormatInt(chatID, 10) + "/" + strconv.Itoa(messageID)
 }
 
-func EncodeDataR(id primitive.ObjectID, panelID int) string {
-	return id.Hex() + "/" + strconv.Itoa(panelID)
+func EncodeDataR(id primitive.ObjectID) string {
+	return id.Hex()
 }
 
 func EncodeDataI(page int, chatID int64, messageID int, panelID int) string {
@@ -47,9 +47,9 @@ func DecodeDataI(data string) (page int, chatID int64, messageID int, panelID in
 	return
 }
 
-func DecodeData(data string) (chatID int64, messageID int, panelID int, err error) {
+func DecodeData(data string) (chatID int64, messageID int, err error) {
 	params := strings.Split(data, "/")
-	if len(params) != 3 {
+	if len(params) != 2 {
 		err = errors.New("params' count no equal to 3")
 		return
 	}
@@ -61,32 +61,19 @@ func DecodeData(data string) (chatID int64, messageID int, panelID int, err erro
 	if err != nil {
 		return
 	}
-	panelID, err = strconv.Atoi(params[2])
+	return
+}
+
+func DecodeDataR(data string) (id primitive.ObjectID, err error) {
+	id, err = primitive.ObjectIDFromHex(data)
 	if err != nil {
 		return
 	}
 	return
 }
 
-func DecodeDataR(data string) (id primitive.ObjectID, panelID int, err error) {
-	params := strings.Split(data, "/")
-	if len(params) != 2 {
-		err = errors.New("params' count no equal to 2")
-		return
-	}
-	id, err = primitive.ObjectIDFromHex(params[0])
-	if err != nil {
-		return
-	}
-	panelID, err = strconv.Atoi(params[1])
-	if err != nil {
-		return
-	}
-	return
-}
-
-func EncodeParam(post *models.Post) (param string, err error) {
-	param += strconv.FormatInt(post.ChatID, 10) + "_" + strconv.Itoa(post.MessageID)
+func EncodeParam(chatID int64, messageID int) (param string, err error) {
+	param += strconv.FormatInt(chatID, 10) + "_" + strconv.Itoa(messageID)
 	/*data, err := json.Marshal(post)
 	if err != nil {
 		return
@@ -95,17 +82,16 @@ func EncodeParam(post *models.Post) (param string, err error) {
 	return
 }
 
-func DecodeParam(param string) (post *models.Post, err error) {
-	post = &models.Post{}
+func DecodeParam(param string) (chatID int64, messageID int, err error) {
 	params := strings.Split(param, "_")
 	if len(params) != 2 {
 		err = errors.New("params' count not equal to 2")
 	}
-	post.ChatID, err = strconv.ParseInt(params[0], 10, 64)
+	chatID, err = strconv.ParseInt(params[0], 10, 64)
 	if err != nil {
 		return
 	}
-	post.MessageID, err = strconv.Atoi(params[1])
+	messageID, err = strconv.Atoi(params[1])
 	if err != nil {
 		return
 	}
@@ -128,27 +114,27 @@ func PageSwitchKeyboardRow(page int, chatID int64, messageID int, panelID int) (
 	return
 }
 
-func CommentPostKeyBoardRow(chatID int64, messageID int, panelID int) (row []tgbotapi.InlineKeyboardButton) {
-	data := EncodeData(chatID, messageID, panelID)
+func CommentPostKeyBoardRow(chatID int64, messageID int) (row []tgbotapi.InlineKeyboardButton) {
+	data := EncodeData(chatID, messageID)
 	commentPost := "cp " + data
 	row = append(row, tgbotapi.InlineKeyboardButton{Text: "点击此按钮评论主贴或选择序号评论回复", CallbackData: &commentPost})
 	return
 }
 
-func CommentIndexKeyBoardRow(comments []*models.Comment, panelID int) (row []tgbotapi.InlineKeyboardButton) {
+func CommentIndexKeyBoardRow(comments []*models.Comment) (row []tgbotapi.InlineKeyboardButton) {
 	for i, comment := range comments {
-		row = append(row, ReplyKeyBoardRow(strconv.Itoa(i+1), comment, panelID))
+		row = append(row, ReplyKeyBoardRow(strconv.Itoa(i+1), comment))
 	}
 	return
 }
 
-func QuickReplyKeyBoardRow(comment *models.Comment, panelID int) (row []tgbotapi.InlineKeyboardButton) {
-	row = append(row, ReplyKeyBoardRow("回复", comment, panelID))
+func QuickReplyKeyBoardRow(comment *models.Comment) (row []tgbotapi.InlineKeyboardButton) {
+	row = append(row, ReplyKeyBoardRow("回复", comment))
 	return
 }
 
-func ReplyKeyBoardRow(text string, comment *models.Comment, panelID int) (btn tgbotapi.InlineKeyboardButton) {
-	callback := "cr " + EncodeDataR(comment.ID, panelID)
+func ReplyKeyBoardRow(text string, comment *models.Comment) (btn tgbotapi.InlineKeyboardButton) {
+	callback := "cr " + EncodeDataR(comment.ID)
 	btn = tgbotapi.InlineKeyboardButton{Text: text, CallbackData: &callback}
 	log.Printf("comment" + text + " callback:" + callback)
 	return

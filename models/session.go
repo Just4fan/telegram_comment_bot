@@ -18,28 +18,26 @@ const (
 	SessionWaitingInputComment = 0x8
 )
 
-var TypeCommentSession = reflect.TypeOf(&CommentSession{})
-var TypeReloadSession = reflect.TypeOf(&ReloadSession{})
+var TypeCommentSession = reflect.TypeOf(&AddCommentSession{})
+var TypeReloadSession = reflect.TypeOf(&ReloadCommentSession{})
+var TypeEnableSession = reflect.TypeOf(&EnableCommentSession{})
 
 type BaseSession struct {
 	ChatID int64 `json:"chat_id"`
 	Status int8  `json:"status"`
 }
 
-type CommentSession struct {
+type AddCommentSession struct {
 	BaseSession
-	Post *Post `json:"message"`
-	//Area     int        `json:"area"`
-	Panel int `json:"panel"`
-	//Page     int        `json:"page"`
-	//Total    int        `json:"total"`
-	//Index    int        `json:"index"`
-	//Params   string     `json:"params"`
-	Comment *Comment `json:"comment"`
-	//Comments []*Comment `json:"comments"`
+	Post    *Post              `json:"post" bson:"post"`
+	ReplyTo primitive.ObjectID `json:"reply_to"`
 }
 
-type ReloadSession struct {
+type ReloadCommentSession struct {
+	BaseSession
+}
+
+type EnableCommentSession struct {
 	BaseSession
 }
 
